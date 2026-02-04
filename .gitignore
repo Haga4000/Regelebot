@@ -35,7 +35,6 @@ postgres_data/
 PROGRESS.md
 .env
 
-prompts/
-prompts/*
+/prompts/
 .claude/
 .claude/*

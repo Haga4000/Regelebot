@@ -8,6 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.subagents import MovieAgent, PollAgent, RecommendationAgent, StatsAgent
 from config import settings
+from core.sanitization import (
+    detect_leaked_system_prompt,
+    sanitize_sender_name,
+    wrap_user_content,
+)
 from prompts.main_agent import MAIN_AGENT_SYSTEM_PROMPT, build_club_context
 from tools.definitions import TOOLS_DEFINITIONS
 
@@ -38,7 +43,8 @@ class MainAgent:
         club_context = await build_club_context(self.subagents["stats"])
         system_prompt = MAIN_AGENT_SYSTEM_PROMPT.format(club_context=club_context)
 
-        full_message = f"[Message de {sender_name}]\n{user_message}"
+        # Sanitize and wrap user content in XML tags for clear separation
+        full_message = wrap_user_content(sender_name, user_message)
 
         # Build tool declarations
         tools = [types.Tool(function_declarations=[
@@ -63,10 +69,11 @@ class MainAgent:
         if conversation_history:
             for msg in conversation_history:
                 if msg.role == "user":
-                    prefix = f"[Message de {msg.sender_name}]\n" if msg.sender_name else ""
+                    # Wrap historical user messages with same XML protection
+                    wrapped = wrap_user_content(msg.sender_name or "Membre", msg.content)
                     contents.append(types.Content(
                         role="user",
-                        parts=[types.Part.from_text(text=f"{prefix}{msg.content}")],
+                        parts=[types.Part.from_text(text=wrapped)],
                     ))
                 else:
                     contents.append(types.Content(
@@ -133,7 +140,14 @@ class MainAgent:
                 break
 
         try:
-            return response.candidates[0].content.parts[0].text
+            response_text = response.candidates[0].content.parts[0].text
+
+            # Output filtering: check for leaked system prompt
+            if detect_leaked_system_prompt(response_text):
+                logger.warning("Potential system prompt leak detected, filtering response")
+                return "Je suis la pour parler cinema avec toi ! Qu'est-ce qui te ferait plaisir ?"
+
+            return response_text
         except (IndexError, AttributeError):
             return "Hmm, j'ai pas reussi a formuler ma reponse. Tu peux reformuler ?"
 
