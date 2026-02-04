@@ -1,0 +1,15 @@
+{
+  "name": "regelebot-gateway",
+  "version": "1.0.0",
+  "description": "WhatsApp gateway for Regelebot",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "whatsapp-web.js": "^1.26.0",
+    "qrcode-terminal": "^0.12.0",
+    "express": "^4.21.0",
+    "axios": "^1.7.0"
+  }
+}
