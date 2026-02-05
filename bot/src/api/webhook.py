@@ -80,11 +80,11 @@ async def receive_message(message: WhatsAppMessage):
 
     if response:
         if isinstance(response, dict):
-            result = {"reply": response["text"]}
+            result = {"reply": _format_as_code_block(response["text"], message.body, message.sender_name)}
             if "poll" in response:
                 result["poll"] = response["poll"]
             return result
-        return {"reply": response}
+        return {"reply": _format_as_code_block(response, message.body, message.sender_name)}
     return {"reply": None}
 
 
@@ -94,6 +94,33 @@ def _extract_response_text(response) -> str | None:
     if isinstance(response, dict):
         return response.get("text")
     return None
+
+
+def _format_as_code_block(text: str, original_message: str = "", sender_name: str = "") -> str:
+    """Wrap text in WhatsApp monospace code block formatting."""
+    if not text:
+        return text
+    # Remove any quoted original message the AI might have added
+    text = _strip_quoted_message(text, original_message, sender_name)
+    return f"```{text.strip()}```"
+
+
+def _strip_quoted_message(text: str, original_message: str, sender_name: str) -> str:
+    """Remove quoted original message from AI responses."""
+    import re
+
+    # Remove "[Message de Name]" prefix pattern
+    pattern = r'^\s*\[Message de [^\]]+\]\s*'
+    text = re.sub(pattern, '', text, flags=re.IGNORECASE)
+
+    # Remove the original message if it appears at the start of the response
+    if original_message:
+        # Clean the original message (remove @mentions)
+        clean_original = re.sub(r'@\w+\s*', '', original_message).strip()
+        if clean_original and text.strip().startswith(clean_original):
+            text = text.strip()[len(clean_original):].strip()
+
+    return text.strip()
 
 
 @router.post("/webhook/poll-created")
