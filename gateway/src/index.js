@@ -142,7 +142,8 @@ async function handleMessage(message, eventName) {
                 }
             }
         } else if (response.data && response.data.reply) {
-            const sentReply = await chat.sendMessage(response.data.reply);
+            // Reply to the original message so it's clear the bot is responding
+            const sentReply = await message.reply(response.data.reply);
             // Mark as handled so dedup ignores the bot's own reply
             if (sentReply && sentReply.id) handled.add(sentReply.id._serialized);
         }
