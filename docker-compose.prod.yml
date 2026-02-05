@@ -1,0 +1,70 @@
+services:
+  gateway:
+    image: hagaradaody/regelebot-gateway:latest
+    # No ports exposed - gateway connects outbound to WhatsApp
+    environment:
+      - BOT_URL=http://bot:8000
+      - WHATSAPP_GROUP_ID=${WHATSAPP_GROUP_ID}
+      - BOT_NAME=${BOT_NAME:-Regelebot}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+    volumes:
+      - whatsapp_session:/app/.wwebjs_auth
+    depends_on:
+      bot:
+        condition: service_healthy
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  bot:
+    image: hagaradaody/regelebot-bot:latest
+    # No ports exposed - only accessible by gateway internally
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://regelebot:${DB_PASSWORD}@db:5432/regelebot
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - TMDB_API_KEY=${TMDB_API_KEY}
+      - BOT_NAME=${BOT_NAME:-Regelebot}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  db:
+    image: postgres:15-alpine
+    # No ports exposed - only accessible internally
+    environment:
+      - POSTGRES_DB=regelebot
+      - POSTGRES_USER=regelebot
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U regelebot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: always
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  postgres_data:
+  whatsapp_session:
