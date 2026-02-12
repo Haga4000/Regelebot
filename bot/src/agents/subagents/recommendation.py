@@ -5,6 +5,7 @@ import httpx
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from constants.tmdb import GENRE_MAP
 from llm import create_llm_provider
 from models.movie import Movie
 from models.watchlist import Watchlist
@@ -13,13 +14,6 @@ logger = logging.getLogger(__name__)
 
 
 class RecommendationAgent:
-    GENRE_MAP = {
-        "action": 28, "aventure": 12, "animation": 16,
-        "comedie": 35, "comédie": 35, "crime": 80,
-        "documentaire": 99, "drame": 18, "fantastique": 14,
-        "horreur": 27, "romance": 10749, "sf": 878,
-        "science-fiction": 878, "thriller": 53, "guerre": 10752,
-    }
 
     def __init__(self, tmdb_api_key: str, db_session: AsyncSession):
         self.api_key = tmdb_api_key
@@ -41,7 +35,7 @@ class RecommendationAgent:
         if rec_type == "similar" and reference:
             candidates = await self._get_similar(reference)
         elif rec_type == "genre" and genre:
-            genre_id = self.GENRE_MAP.get(genre.lower())
+            genre_id = GENRE_MAP.get(genre.lower())
             if genre_id:
                 candidates = await self._discover_by_genre(genre_id)
         elif rec_type == "mood" and mood:
