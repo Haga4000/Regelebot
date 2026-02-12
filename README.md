@@ -6,6 +6,8 @@ AI-powered conversational agent for a WhatsApp cinema club. Supports multiple LL
 
 - **Natural conversation** — mention `@Regelebot` and chat about movies like you would with a friend
 - **Smart recommendations** — personalized suggestions by genre, mood, or similarity to a reference film
+- **Movie discovery** — natural-language catalog browsing with combinable filters (genre, year, platform, rating, language)
+- **Trending movies** — what's hot right now (daily or weekly)
 - **Film info** — synopsis, cast, ratings, streaming platforms via TMDb
 - **Watch tracking** — log watched movies and rate them (1-5 stars)
 - **Club statistics** — total movies watched, average ratings, top genres
@@ -114,6 +116,10 @@ Mention `@Regelebot` in the group to chat:
 @Regelebot un thriller comme Seven mais en francais
 @Regelebot c'est quoi le film avec DiCaprio dans les reves ?
 @Regelebot on veut un truc feel-good pour ce soir
+@Regelebot un bon thriller sur Netflix sorti apres 2020
+@Regelebot les meilleurs films des annees 80
+@Regelebot quoi de chaud en ce moment ?
+@Regelebot un film coreen bien note
 @Regelebot pourquoi Tarantino filme autant les pieds ?
 ```
 
@@ -180,7 +186,7 @@ WhatsApp Group
 | Agent | Purpose | Data Source |
 |-------|---------|-------------|
 | **MainAgent** | Orchestrator, understands intent, generates responses | LLM (any provider) |
-| **MovieAgent** | Film search & metadata | TMDb API |
+| **MovieAgent** | Film search, discovery & trending | TMDb API |
 | **RecommendationAgent** | Smart suggestions (genre, mood, similar) | TMDb API + LLM |
 | **StatsAgent** | Club history, ratings, analytics | PostgreSQL |
 | **PollAgent** | Polls, voting, results | PostgreSQL |
@@ -268,6 +274,7 @@ regelebot/
 │   │   │   ├── base.py         # BaseSubAgent abstract class
 │   │   │   ├── main_agent.py   # LLM orchestrator (ReAct loop)
 │   │   │   └── subagents/      # Movie, Stats, Recommendation, Poll
+│   │   ├── constants/          # Shared constants (TMDb genre/provider maps)
 │   │   ├── llm/                # Multi-provider LLM abstraction
 │   │   │   ├── __init__.py     # Factory + re-exports
 │   │   │   ├── base.py         # Abstract LLMProvider
