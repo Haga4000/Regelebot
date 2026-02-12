@@ -3,6 +3,8 @@ from typing import Optional
 
 import httpx
 
+from constants.tmdb import GENRE_MAP, PROVIDER_MAP
+
 logger = logging.getLogger(__name__)
 
 
@@ -86,3 +88,131 @@ class MovieAgent:
                 else None
             ),
         }
+
+    async def now_playing(self) -> dict:
+        params = {
+            "api_key": self.api_key,
+            "language": "fr-FR",
+            "region": "FR",
+        }
+
+        response = await self.client.get(
+            f"{self.base_url}/movie/now_playing", params=params
+        )
+        results = response.json().get("results", [])
+
+        if not results:
+            return {"error": "Aucun film a l'affiche trouve"}
+
+        movies = []
+        for m in results[:10]:
+            overview = m.get("overview", "")
+            if len(overview) > 150:
+                overview = overview[:147] + "..."
+            movies.append(
+                {
+                    "title": m.get("title"),
+                    "year": m.get("release_date", "")[:4],
+                    "vote_average": m.get("vote_average"),
+                    "overview": overview,
+                }
+            )
+
+        return {"now_playing": movies}
+
+    async def discover(
+        self,
+        genre: Optional[str] = None,
+        year_min: Optional[int] = None,
+        year_max: Optional[int] = None,
+        platform: Optional[str] = None,
+        sort_by: str = "popularity.desc",
+        min_rating: Optional[float] = None,
+        language: Optional[str] = None,
+    ) -> dict:
+        params: dict = {
+            "api_key": self.api_key,
+            "language": "fr-FR",
+            "sort_by": sort_by,
+            "vote_count.gte": 50,
+        }
+
+        if genre:
+            genre_id = GENRE_MAP.get(genre.lower())
+            if genre_id:
+                params["with_genres"] = genre_id
+
+        if year_min:
+            params["primary_release_date.gte"] = f"{year_min}-01-01"
+        if year_max:
+            params["primary_release_date.lte"] = f"{year_max}-12-31"
+
+        if platform:
+            provider_id = PROVIDER_MAP.get(platform.lower())
+            if provider_id:
+                params["with_watch_providers"] = provider_id
+                params["watch_region"] = "FR"
+
+        if min_rating is not None:
+            params["vote_average.gte"] = min_rating
+            params["vote_count.gte"] = 200
+
+        if language:
+            params["with_original_language"] = language
+
+        response = await self.client.get(
+            f"{self.base_url}/discover/movie", params=params
+        )
+        results = response.json().get("results", [])
+
+        if not results:
+            return {"error": "Aucun film trouve avec ces criteres"}
+
+        movies = []
+        for m in results[:10]:
+            overview = m.get("overview", "")
+            if len(overview) > 150:
+                overview = overview[:147] + "..."
+            movies.append(
+                {
+                    "title": m.get("title"),
+                    "year": m.get("release_date", "")[:4],
+                    "vote_average": m.get("vote_average"),
+                    "overview": overview,
+                }
+            )
+
+        return {"discover_results": movies}
+
+    async def trending(self, window: str = "week") -> dict:
+        if window not in ("day", "week"):
+            window = "week"
+
+        params = {
+            "api_key": self.api_key,
+            "language": "fr-FR",
+        }
+
+        response = await self.client.get(
+            f"{self.base_url}/trending/movie/{window}", params=params
+        )
+        results = response.json().get("results", [])
+
+        if not results:
+            return {"error": "Aucun film tendance trouve"}
+
+        movies = []
+        for m in results[:10]:
+            overview = m.get("overview", "")
+            if len(overview) > 150:
+                overview = overview[:147] + "..."
+            movies.append(
+                {
+                    "title": m.get("title"),
+                    "year": m.get("release_date", "")[:4],
+                    "vote_average": m.get("vote_average"),
+                    "overview": overview,
+                }
+            )
+
+        return {"trending": movies, "window": window}

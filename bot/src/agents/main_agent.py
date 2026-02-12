@@ -185,4 +185,20 @@ class MainAgent:
             return await self.subagents["poll"].close_poll(
                 poll_id=args.get("poll_id"),
             )
+        elif tool_name == "get_now_playing":
+            return await self.subagents["movie"].now_playing()
+        elif tool_name == "discover_movies":
+            return await self.subagents["movie"].discover(
+                genre=args.get("genre"),
+                year_min=args.get("year_min"),
+                year_max=args.get("year_max"),
+                platform=args.get("platform"),
+                sort_by=args.get("sort_by", "popularity.desc"),
+                min_rating=args.get("min_rating"),
+                language=args.get("language"),
+            )
+        elif tool_name == "get_trending":
+            return await self.subagents["movie"].trending(
+                window=args.get("window", "week"),
+            )
         return {"error": f"Outil inconnu: {tool_name}"}

@@ -190,4 +190,83 @@ TOOLS_DEFINITIONS = [
             },
         },
     },
+    {
+        "name": "get_now_playing",
+        "description": "Recupere la liste des films actuellement a l'affiche au cinema en France",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+        },
+    },
+    {
+        "name": "discover_movies",
+        "description": (
+            "Explore le catalogue TMDb avec des filtres : genre, annee, plateforme de streaming, "
+            "note minimale, langue originale. Ideal pour des recherches comme "
+            "'un bon thriller sur Netflix sorti apres 2020' ou 'les meilleurs films des annees 80'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "genre": {
+                    "type": "string",
+                    "description": (
+                        "Genre du film : action, aventure, animation, comedie, crime, "
+                        "documentaire, drame, fantastique, horreur, romance, sf, "
+                        "science-fiction, thriller, guerre"
+                    ),
+                },
+                "year_min": {
+                    "type": "integer",
+                    "description": "Annee de sortie minimum (ex: 2020)",
+                },
+                "year_max": {
+                    "type": "integer",
+                    "description": "Annee de sortie maximum (ex: 2023)",
+                },
+                "platform": {
+                    "type": "string",
+                    "description": (
+                        "Plateforme de streaming : netflix, disney+, amazon, prime video, "
+                        "canal+, apple tv+, ocs, paramount+, crunchyroll"
+                    ),
+                },
+                "sort_by": {
+                    "type": "string",
+                    "enum": [
+                        "popularity.desc",
+                        "vote_average.desc",
+                        "primary_release_date.desc",
+                        "revenue.desc",
+                    ],
+                    "description": "Critere de tri (defaut: popularity.desc)",
+                },
+                "min_rating": {
+                    "type": "number",
+                    "description": "Note TMDb minimale (ex: 7.0)",
+                },
+                "language": {
+                    "type": "string",
+                    "description": "Code ISO 639-1 de la langue originale (ex: ko, ja, fr, en)",
+                },
+            },
+        },
+    },
+    {
+        "name": "get_trending",
+        "description": (
+            "Recupere les films tendance du moment sur TMDb. "
+            "Ideal quand on demande 'quoi de chaud en ce moment' ou 'les films du moment'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "window": {
+                    "type": "string",
+                    "enum": ["day", "week"],
+                    "description": "Periode : tendances du jour ou de la semaine (defaut: week)",
+                },
+            },
+        },
+    },
 ]
