@@ -2,8 +2,6 @@ import json
 import logging
 from typing import Any
 
-from google import genai
-from google.genai import types
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from agents.subagents import MovieAgent, PollAgent, RecommendationAgent, StatsAgent
@@ -13,6 +11,7 @@ from core.sanitization import (
     sanitize_sender_name,
     wrap_user_content,
 )
+from llm import ChatMessage, ToolDefinition, create_llm_provider
 from prompts.main_agent import MAIN_AGENT_SYSTEM_PROMPT, build_club_context
 from tools.definitions import TOOLS_DEFINITIONS
 
@@ -21,8 +20,7 @@ logger = logging.getLogger(__name__)
 
 class MainAgent:
     def __init__(self, db_session: AsyncSession):
-        self.client = genai.Client(api_key=settings.GEMINI_API_KEY)
-        self.model_name = "gemini-2.5-flash-lite"
+        self.llm = create_llm_provider()
 
         self.subagents = {
             "movie": MovieAgent(settings.TMDB_API_KEY),
@@ -46,55 +44,40 @@ class MainAgent:
         # Sanitize and wrap user content in XML tags for clear separation
         full_message = wrap_user_content(sender_name, user_message)
 
-        # Build tool declarations
-        tools = [types.Tool(function_declarations=[
-            types.FunctionDeclaration(
+        # Build tool definitions
+        tools = [
+            ToolDefinition(
                 name=t["name"],
                 description=t["description"],
                 parameters=t["parameters"],
             )
             for t in TOOLS_DEFINITIONS
-        ])]
+        ]
 
-        config = types.GenerateContentConfig(
-            system_instruction=system_prompt,
-            tools=tools,
-            temperature=0.7,
-            max_output_tokens=1024,
-        )
-
-        # Build contents: history + current message
-        contents: list[types.Content] = []
+        # Build messages: system + history + current
+        messages: list[ChatMessage] = [
+            ChatMessage(role="system", content=system_prompt),
+        ]
 
         if conversation_history:
             for msg in conversation_history:
                 if msg.role == "user":
-                    # Wrap historical user messages with same XML protection
                     wrapped = wrap_user_content(msg.sender_name or "Membre", msg.content)
-                    contents.append(types.Content(
-                        role="user",
-                        parts=[types.Part.from_text(text=wrapped)],
-                    ))
+                    messages.append(ChatMessage(role="user", content=wrapped))
                 else:
-                    contents.append(types.Content(
-                        role="model",
-                        parts=[types.Part.from_text(text=msg.content)],
-                    ))
+                    messages.append(ChatMessage(role="assistant", content=msg.content))
 
-        contents.append(
-            types.Content(role="user", parts=[types.Part.from_text(text=full_message)])
-        )
-
-        contents = self._consolidate_contents(contents)
+        messages.append(ChatMessage(role="user", content=full_message))
 
         try:
-            response = await self.client.aio.models.generate_content(
-                model=self.model_name,
-                contents=contents,
-                config=config,
+            response = await self.llm.generate(
+                messages=messages,
+                tools=tools,
+                temperature=0.7,
+                max_tokens=1024,
             )
         except Exception as e:
-            logger.error("Gemini API error: %s", e)
+            logger.error("LLM API error: %s", e)
             return "Oups, j'ai eu un souci technique. Reessaie dans quelques secondes !"
 
         # ReAct loop: handle tool calls
@@ -104,43 +87,46 @@ class MainAgent:
         while iteration < max_iterations:
             iteration += 1
 
-            if not response.candidates or not response.candidates[0].content.parts:
+            if not response.has_tool_calls:
                 break
 
-            part = response.candidates[0].content.parts[0]
+            tool_call = response.tool_calls[0]
+            logger.info("Tool call: %s(%s)", tool_call.name, tool_call.arguments)
 
-            if part.function_call:
-                tool_name = part.function_call.name
-                tool_args = dict(part.function_call.args) if part.function_call.args else {}
+            tool_result = await self._execute_tool(tool_call.name, tool_call.arguments)
 
-                logger.info("Tool call: %s(%s)", tool_name, tool_args)
+            # Add assistant's tool call and tool result to conversation
+            messages.append(
+                ChatMessage(
+                    role="assistant",
+                    tool_calls=response.tool_calls,
+                    content=response.content,
+                )
+            )
+            messages.append(
+                ChatMessage(
+                    role="tool",
+                    content=json.dumps(tool_result, default=str),
+                    tool_call_id=tool_call.id,
+                    tool_name=tool_call.name,
+                )
+            )
 
-                tool_result = await self._execute_tool(tool_name, tool_args)
-
-                # Add model's response and function result to conversation
-                contents.append(response.candidates[0].content)
-                contents.append(types.Content(
-                    role="user",
-                    parts=[types.Part.from_function_response(
-                        name=tool_name,
-                        response={"result": json.loads(json.dumps(tool_result, default=str))},
-                    )],
-                ))
-
-                try:
-                    response = await self.client.aio.models.generate_content(
-                        model=self.model_name,
-                        contents=contents,
-                        config=config,
-                    )
-                except Exception as e:
-                    logger.error("Gemini API error during tool loop: %s", e)
-                    return "J'ai eu un probleme en cherchant les infos. Reessaie !"
-            else:
-                break
+            try:
+                response = await self.llm.generate(
+                    messages=messages,
+                    tools=tools,
+                    temperature=0.7,
+                    max_tokens=1024,
+                )
+            except Exception as e:
+                logger.error("LLM API error during tool loop: %s", e)
+                return "J'ai eu un probleme en cherchant les infos. Reessaie !"
 
         try:
-            response_text = response.candidates[0].content.parts[0].text
+            response_text = response.content
+            if not response_text:
+                return "Hmm, j'ai pas reussi a formuler ma reponse. Tu peux reformuler ?"
 
             # Output filtering: check for leaked system prompt
             if detect_leaked_system_prompt(response_text):
@@ -200,17 +186,3 @@ class MainAgent:
                 poll_id=args.get("poll_id"),
             )
         return {"error": f"Outil inconnu: {tool_name}"}
-
-    @staticmethod
-    def _consolidate_contents(contents: list[types.Content]) -> list[types.Content]:
-        """Merge consecutive same-role entries to satisfy Gemini's strict user/model alternation."""
-        if not contents:
-            return contents
-
-        consolidated: list[types.Content] = [contents[0]]
-        for entry in contents[1:]:
-            if entry.role == consolidated[-1].role:
-                consolidated[-1].parts.extend(entry.parts)
-            else:
-                consolidated.append(entry)
-        return consolidated

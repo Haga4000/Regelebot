@@ -2,11 +2,10 @@ import logging
 from typing import Optional
 
 import httpx
-from google import genai
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import settings
+from llm import create_llm_provider
 from models.movie import Movie
 from models.watchlist import Watchlist
 
@@ -27,7 +26,7 @@ class RecommendationAgent:
         self.base_url = "https://api.themoviedb.org/3"
         self.client = httpx.AsyncClient(timeout=10.0)
         self.db = db_session
-        self.genai_client = genai.Client(api_key=settings.GEMINI_API_KEY)
+        self.llm = create_llm_provider()
 
     async def get(
         self,
@@ -109,11 +108,8 @@ class RecommendationAgent:
         Return ONLY comma-separated genre IDs. Example: 35,10749"""
 
         try:
-            response = await self.genai_client.aio.models.generate_content(
-                model="gemini-2.5-flash-lite",
-                contents=prompt,
-            )
-            return [int(x.strip()) for x in response.text.split(",")]
+            text = await self.llm.generate_text(prompt)
+            return [int(x.strip()) for x in text.split(",")]
         except (ValueError, AttributeError):
             return [35]  # Fallback: comedy
 

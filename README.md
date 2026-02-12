@@ -1,6 +1,6 @@
 # Regelebot
 
-AI-powered conversational agent for a WhatsApp cinema club. Powered by **Gemini**, it acts as a knowledgeable film buddy that chats naturally in French, recommends movies based on the group's taste, tracks watch history, and runs polls with native WhatsApp integration.
+AI-powered conversational agent for a WhatsApp cinema club. Supports multiple LLM providers (**Gemini**, **Mistral**, **OpenAI**, **Claude**, **Ollama**) — switch via a single env var. It acts as a knowledgeable film buddy that chats naturally in French, recommends movies based on the group's taste, tracks watch history, and runs polls with native WhatsApp integration.
 
 ## Features
 
@@ -12,18 +12,53 @@ AI-powered conversational agent for a WhatsApp cinema club. Powered by **Gemini*
 - **Native WhatsApp polls** — create polls with `/sondage`, vote by tapping the native poll or via `/vote`
 - **Bidirectional poll sync** — native WhatsApp poll taps and `/vote` text commands both count in `/resultats`
 - **Slash commands** — quick actions without going through the LLM
+- **Multi-provider LLM** — swap between Gemini, Mistral, OpenAI, Claude, or Ollama with env vars
 
 ## Tech Stack
 
 | Component | Technology |
 |-----------|-----------|
-| Bot Core | Python 3.11 / FastAPI |
-| LLM | Gemini (via google-generativeai) |
+| Bot Core | Python 3.13 / FastAPI |
+| LLM | Multi-provider: Gemini, Mistral, OpenAI, Anthropic, Ollama |
 | Database | PostgreSQL 15 |
 | ORM | SQLAlchemy 2.0 (async) |
 | WhatsApp | whatsapp-web.js (Node.js gateway) |
 | Film Data | TMDb API |
 | Infra | Docker Compose |
+
+## LLM Providers
+
+| Provider | Default Model | SDK | Notes |
+|----------|--------------|-----|-------|
+| `gemini` | `gemini-2.5-flash-lite` | `google-genai` | Default provider |
+| `mistral` | `mistral-small-latest` | `mistralai` | |
+| `openai` | `gpt-4o-mini` | `openai` | |
+| `anthropic` | `claude-sonnet-4-5-20250929` | `anthropic` | |
+| Ollama | (set `LLM_MODEL`) | `openai` | Use `openai` provider + `LLM_BASE_URL` |
+
+Only the selected provider's SDK needs to be installed. The factory uses lazy imports.
+
+### Switching providers
+
+```bash
+# Mistral
+LLM_PROVIDER=mistral
+LLM_API_KEY=your_mistral_key
+
+# OpenAI
+LLM_PROVIDER=openai
+LLM_API_KEY=your_openai_key
+
+# Anthropic (Claude)
+LLM_PROVIDER=anthropic
+LLM_API_KEY=your_anthropic_key
+
+# Ollama (local)
+LLM_PROVIDER=openai
+LLM_API_KEY=ollama
+LLM_BASE_URL=http://localhost:11434/v1
+LLM_MODEL=ministral-8b
+```
 
 ## Security
 
@@ -37,7 +72,7 @@ AI-powered conversational agent for a WhatsApp cinema club. Powered by **Gemini*
 ## Prerequisites
 
 - Docker & Docker Compose
-- A Google Gemini API key ([get one here](https://aistudio.google.com/apikey))
+- An API key for your chosen LLM provider (e.g. [Gemini](https://aistudio.google.com/apikey), [Mistral](https://console.mistral.ai/), [OpenAI](https://platform.openai.com/api-keys), [Anthropic](https://console.anthropic.com/))
 - A TMDb API key ([sign up here](https://www.themoviedb.org/signup))
 - A WhatsApp account to link the bot
 
@@ -46,7 +81,7 @@ AI-powered conversational agent for a WhatsApp cinema club. Powered by **Gemini*
 1. **Clone and configure**
    ```bash
    cp .env.example .env
-   # Edit .env with your API keys, DB password, and a random WEBHOOK_SECRET
+   # Edit .env: set LLM_PROVIDER, LLM_API_KEY, TMDB_API_KEY, DB_PASSWORD, WEBHOOK_SECRET
    ```
 
 2. **Start the stack**
@@ -82,7 +117,7 @@ Mention `@Regelebot` in the group to chat:
 @Regelebot pourquoi Tarantino filme autant les pieds ?
 ```
 
-The bot uses a ReAct loop with Gemini function calling to search films, check the club's history, and generate contextual recommendations.
+The bot uses a ReAct loop with function calling to search films, check the club's history, and generate contextual recommendations.
 
 ### Slash Commands (direct, no LLM)
 
@@ -130,25 +165,41 @@ WhatsApp Group
       |         /command route              @mention route
       |                  |                         |
       |                  v                         v
-      |        CommandHandlers            MainAgent (Gemini)
+      |        CommandHandlers             MainAgent (LLM)
       |           (no LLM)                    ReAct loop
       |                                           |
       |                          +--------+-------+-------+--------+
       |                          v        v               v        v
       |                     MovieAgent RecoAgent     StatsAgent PollAgent
       |                        |         |               |        |
-      |                     TMDb API  TMDb+Gemini    PostgreSQL  PostgreSQL
+      |                     TMDb API  TMDb+LLM       PostgreSQL  PostgreSQL
 ```
 
 ### Multi-Agent Design
 
 | Agent | Purpose | Data Source |
 |-------|---------|-------------|
-| **MainAgent** | Orchestrator, understands intent, generates responses | Gemini LLM |
+| **MainAgent** | Orchestrator, understands intent, generates responses | LLM (any provider) |
 | **MovieAgent** | Film search & metadata | TMDb API |
-| **RecommendationAgent** | Smart suggestions (genre, mood, similar) | TMDb API + Gemini |
+| **RecommendationAgent** | Smart suggestions (genre, mood, similar) | TMDb API + LLM |
 | **StatsAgent** | Club history, ratings, analytics | PostgreSQL |
 | **PollAgent** | Polls, voting, results | PostgreSQL |
+
+### LLM Abstraction Layer
+
+```
+bot/src/llm/
+├── __init__.py              # Factory create_llm_provider() + re-exports
+├── base.py                  # Abstract LLMProvider class
+├── types.py                 # ChatMessage, ToolCall, ToolDefinition, LLMResponse
+└── providers/
+    ├── gemini.py            # Google Gemini (role alternation, function_response)
+    ├── mistral.py           # Mistral API (OpenAI-like format)
+    ├── openai.py            # OpenAI + Ollama (via base_url)
+    └── anthropic.py         # Claude (system param, input_schema, tool_result blocks)
+```
+
+Each provider translates the generic `ChatMessage`/`ToolDefinition` types to its native API format. The factory reads `LLM_PROVIDER` from config and lazy-imports only the selected SDK.
 
 ### Database Schema
 
@@ -191,19 +242,12 @@ docker compose exec bot alembic revision --autogenerate -m "description"
 ### Run tests
 
 ```bash
-# In Docker (recommended)
-docker build -t regelebot-test ./bot
-docker run --rm \
-  -e GEMINI_API_KEY=test -e TMDB_API_KEY=test \
-  -e DATABASE_URL=sqlite+aiosqlite:///test.db \
-  -e WEBHOOK_SECRET=test -e BOT_NAME=Regelebot \
-  regelebot-test python -m pytest tests/ -v
-
-# Locally
 cd bot
-pip install -r requirements.txt
-GEMINI_API_KEY=test TMDB_API_KEY=test DATABASE_URL=sqlite+aiosqlite:///test.db \
-  WEBHOOK_SECRET=test python -m pytest tests/ -v
+PYTHONPATH=src \
+  LLM_API_KEY=test TMDB_API_KEY=test \
+  DATABASE_URL=sqlite+aiosqlite:///test.db \
+  WEBHOOK_SECRET=test \
+  python3 -m pytest tests/ -v
 ```
 
 ### Rebuild after code changes
@@ -219,11 +263,16 @@ regelebot/
 ├── bot/                        # Python bot core
 │   ├── src/
 │   │   ├── main.py             # FastAPI app + startup (auto-migration)
-│   │   ├── config.py           # Pydantic settings
+│   │   ├── config.py           # Pydantic settings (LLM_PROVIDER, etc.)
 │   │   ├── agents/
 │   │   │   ├── base.py         # BaseSubAgent abstract class
-│   │   │   ├── main_agent.py   # Gemini orchestrator (ReAct loop)
+│   │   │   ├── main_agent.py   # LLM orchestrator (ReAct loop)
 │   │   │   └── subagents/      # Movie, Stats, Recommendation, Poll
+│   │   ├── llm/                # Multi-provider LLM abstraction
+│   │   │   ├── __init__.py     # Factory + re-exports
+│   │   │   ├── base.py         # Abstract LLMProvider
+│   │   │   ├── types.py        # ChatMessage, ToolCall, LLMResponse
+│   │   │   └── providers/      # gemini, mistral, openai, anthropic
 │   │   ├── commands/           # Slash command handlers (no LLM)
 │   │   ├── api/
 │   │   │   ├── webhook.py      # /webhook/message, /poll-created, /poll-vote
@@ -231,21 +280,15 @@ regelebot/
 │   │   │   └── dependencies.py # Auth dependency (webhook secret verification)
 │   │   ├── models/             # SQLAlchemy models (Member, Movie, Poll, etc.)
 │   │   ├── prompts/            # System prompt with personality & context
-│   │   ├── tools/              # Gemini function calling definitions
+│   │   ├── tools/              # Function calling definitions (JSON Schema)
 │   │   └── core/               # MessageRouter, DB, rate_limiter, token_budget
-│   ├── tests/                  # pytest test suite (27 tests)
+│   ├── tests/                  # pytest test suite
 │   └── alembic/                # Database migrations
 ├── gateway/                    # Node.js WhatsApp gateway
 │   └── src/index.js            # Message listener, poll sync, vote_update
-├── scripts/
-│   └── seed.py                 # Sample data seeder
-├── prompts/                    # Product & design docs
-│   ├── PRD_Regelebot.md
-│   └── Design_Technique_Regelebot.md
 ├── docker-compose.yml
-├── .env.example
-├── ARCHITECTURE.md
-└── PROGRESS.md
+├── docker-compose.prod.yml
+└── .env.example
 ```
 
 ## API Endpoints
