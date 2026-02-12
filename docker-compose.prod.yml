@@ -2,11 +2,9 @@ services:
   gateway:
     image: hagaradaody/regelebot-gateway:latest
     # No ports exposed - gateway connects outbound to WhatsApp
+    env_file: .env
     environment:
       - BOT_URL=http://bot:8000
-      - WHATSAPP_GROUP_ID=${WHATSAPP_GROUP_ID}
-      - BOT_NAME=${BOT_NAME:-Regelebot}
-      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
     volumes:
       - whatsapp_session:/app/.wwebjs_auth
     depends_on:
@@ -28,12 +26,9 @@ services:
   bot:
     image: hagaradaody/regelebot-bot:latest
     # No ports exposed - only accessible by gateway internally
+    env_file: .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://regelebot:${DB_PASSWORD}@db:5432/regelebot
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
-      - TMDB_API_KEY=${TMDB_API_KEY}
-      - BOT_NAME=${BOT_NAME:-Regelebot}
-      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
     depends_on:
       db:
         condition: service_healthy

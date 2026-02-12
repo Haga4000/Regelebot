@@ -2,7 +2,12 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    GEMINI_API_KEY: str
+    # LLM provider settings — must be set in .env
+    LLM_PROVIDER: str  # gemini | openai | mistral | anthropic
+    LLM_API_KEY: str
+    LLM_MODEL: str = ""  # empty = provider default
+    LLM_BASE_URL: str | None = None  # for Ollama: http://host:11434/v1
+
     TMDB_API_KEY: str
     DATABASE_URL: str
     BOT_NAME: str = "Regelebot"
