@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from commands.aide import cmd_aide
 from commands.film import cmd_film
+from commands.flush import cmd_flush
 from commands.historique import cmd_historique, cmd_noter, cmd_vu
 from commands.stats import cmd_stats
 from commands.vote import cmd_resultats, cmd_sondage, cmd_vote
@@ -21,10 +22,13 @@ COMMANDS = {
     "/sondage": cmd_sondage,
     "/vote": cmd_vote,
     "/resultats": cmd_resultats,
+    "/flush": cmd_flush,
 }
 
 
-async def handle_command(message: str, sender: dict, db: AsyncSession) -> Optional[str | dict]:
+async def handle_command(
+    message: str, sender: dict, db: AsyncSession, group_id: str = ""
+) -> Optional[str | dict]:
     parts = message.strip().split(maxsplit=1)
     command = parts[0].lower()
     args = parts[1] if len(parts) > 1 else ""
@@ -34,7 +38,7 @@ async def handle_command(message: str, sender: dict, db: AsyncSession) -> Option
         return f"Commande inconnue : {command}\nTape /aide pour voir les commandes disponibles."
 
     try:
-        return await handler(args=args, sender=sender, db=db)
+        return await handler(args=args, sender=sender, db=db, group_id=group_id)
     except Exception as e:
         logger.error("Command error %s: %s", command, e)
         return f"Erreur lors de l'execution de {command}. Reessaie !"

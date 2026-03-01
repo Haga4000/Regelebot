@@ -3,7 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from agents.subagents.poll import PollAgent
 
 
-async def cmd_sondage(args: str, sender: dict, db: AsyncSession) -> str | dict:
+async def cmd_sondage(args: str, sender: dict, db: AsyncSession, **kwargs) -> str | dict:
     """Create a poll. Usage: /sondage Question ? | Option1 | Option2 | ..."""
     if not args or "|" not in args:
         return (
@@ -44,7 +44,7 @@ async def cmd_sondage(args: str, sender: dict, db: AsyncSession) -> str | dict:
     }
 
 
-async def cmd_vote(args: str, sender: dict, db: AsyncSession) -> str:
+async def cmd_vote(args: str, sender: dict, db: AsyncSession, **kwargs) -> str:
     """Vote on the current poll. Usage: /vote <option_number>"""
     if not args:
         return "Usage : /vote <numero>\nExemple : /vote 2"
@@ -76,7 +76,7 @@ async def cmd_vote(args: str, sender: dict, db: AsyncSession) -> str:
     return result["message"]
 
 
-async def cmd_resultats(args: str, sender: dict, db: AsyncSession) -> str:
+async def cmd_resultats(args: str, sender: dict, db: AsyncSession, **kwargs) -> str:
     """Show poll results. Usage: /resultats"""
     agent = PollAgent(db)
     result = await agent.get_results()

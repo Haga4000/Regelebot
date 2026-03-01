@@ -1,4 +1,4 @@
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import settings
@@ -43,3 +43,28 @@ class ConversationService:
         rows = list(result.scalars().all())
         rows.reverse()
         return rows
+
+    async def clear_recent_history(self, group_id: str) -> int:
+        """Delete the last CONVERSATION_WINDOW_SIZE messages for a group.
+
+        Returns the number of deleted rows.
+        """
+        limit = settings.CONVERSATION_WINDOW_SIZE
+        # Step 1: fetch the IDs of the most recent messages
+        id_stmt = (
+            select(ConversationMessage.id)
+            .where(ConversationMessage.group_id == group_id)
+            .order_by(ConversationMessage.created_at.desc())
+            .limit(limit)
+        )
+        rows = await self.db.execute(id_stmt)
+        ids_to_delete = [row[0] for row in rows.all()]
+        if not ids_to_delete:
+            return 0
+        # Step 2: delete by those IDs
+        del_stmt = delete(ConversationMessage).where(
+            ConversationMessage.id.in_(ids_to_delete)
+        )
+        result = await self.db.execute(del_stmt)
+        await self.db.flush()
+        return result.rowcount

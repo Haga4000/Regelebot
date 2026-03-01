@@ -100,10 +100,11 @@ LLM_MODEL=ministral-8b
    - A QR code appears in the gateway logs
    - Scan it with your phone: WhatsApp > Linked Devices > Link a Device
 
-5. **Get your group ID**
-   - Send any message in your WhatsApp group
-   - The gateway logs the group ID (format: `XXXXXXXXXX@g.us`)
-   - Add it to `.env` as `WHATSAPP_GROUP_ID`
+5. **Get your chat IDs**
+   - Send a message in each WhatsApp chat you want the bot to monitor (group or 1-to-1)
+   - The gateway logs each chat ID (groups: `XXXXX@g.us`, 1-to-1: `XXXXX@c.us`)
+   - Add them to `.env` as `WHATSAPP_CHAT_IDS=id1,id2` (comma-separated)
+   - In 1-to-1 chats, every message is sent to the bot (no `@mention` needed)
    - Restart: `docker compose restart gateway`
 
 ## Usage

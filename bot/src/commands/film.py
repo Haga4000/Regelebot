@@ -4,7 +4,7 @@ from agents.subagents.movie import MovieAgent
 from config import settings
 
 
-async def cmd_film(args: str, sender: dict, db: AsyncSession) -> str:
+async def cmd_film(args: str, sender: dict, db: AsyncSession, **kwargs) -> str:
     if not args.strip():
         return "Usage : /film [titre du film]"
 

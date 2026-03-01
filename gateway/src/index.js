@@ -7,10 +7,13 @@ const app = express();
 app.use(express.json());
 
 const BOT_URL = process.env.BOT_URL || 'http://localhost:8000';
-const GROUP_ID = process.env.WHATSAPP_GROUP_ID;
 const BOT_NAME = (process.env.BOT_NAME || 'Regelebot').toLowerCase();
 const PORT = process.env.PORT || 3000;
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET;
+
+// Support comma-separated chat IDs (groups + 1-to-1), with backward compat
+const rawChatIds = process.env.WHATSAPP_CHAT_IDS || process.env.WHATSAPP_GROUP_ID || '';
+const CHAT_IDS = new Set(rawChatIds.split(',').map(s => s.trim()).filter(Boolean));
 
 const client = new Client({
     authStrategy: new LocalAuth(),
@@ -41,13 +44,17 @@ client.on('authenticated', () => {
 
 client.on('ready', () => {
     console.log('[Gateway] WhatsApp connecte et pret !');
-    if (GROUP_ID) {
-        console.log(`[Gateway] Groupe cible: ${GROUP_ID}`);
+    if (CHAT_IDS.size > 0) {
+        console.log(`[Gateway] Chats actifs: ${[...CHAT_IDS].join(', ')}`);
     } else {
-        console.log('[Gateway] WHATSAPP_GROUP_ID non defini.');
-        console.log('[Gateway] Envoyez un message dans votre groupe pour voir son ID dans les logs.');
+        console.log('[Gateway] WHATSAPP_CHAT_IDS non defini.');
+        console.log('[Gateway] Envoyez un message dans un chat pour voir son ID dans les logs.');
     }
 });
+
+// Per-chat processing guard: prevents reply loops in 1-to-1 and self-chats.
+// While handleMessage is running for a chat, any new message in that chat is skipped.
+const processing = new Set();
 
 // Handle incoming messages
 async function handleMessage(message, eventName) {
@@ -63,27 +70,32 @@ async function handleMessage(message, eventName) {
 
     const chatId = chat.id._serialized;
 
-    // Discovery mode: log all group chats
-    if (!GROUP_ID) {
+    // Discovery mode: log all chats when no IDs configured
+    if (CHAT_IDS.size === 0) {
         console.log(`[Gateway][${eventName}] chat=${chatId} isGroup=${chat.isGroup} chatName="${chat.name}" fromMe=${message.fromMe} body="${body.substring(0, 50)}"`);
-        if (chat.isGroup) {
-            console.log(`[Gateway] *** GROUPE DETECTE: ${chatId} ***`);
-            console.log(`[Gateway] *** Nom du groupe: ${chat.name} ***`);
-            console.log(`[Gateway] → Ajoutez WHATSAPP_GROUP_ID=${chatId} dans votre .env`);
-        }
+        console.log(`[Gateway] *** CHAT DETECTE: ${chatId} (${chat.isGroup ? 'groupe' : '1-to-1'}) ***`);
+        if (chat.name) console.log(`[Gateway] *** Nom: ${chat.name} ***`);
+        console.log(`[Gateway] → Ajoutez WHATSAPP_CHAT_IDS=${chatId} dans votre .env`);
         return;
     }
 
-    // Filter: only target group (match on chat ID, not message.from)
-    if (chatId !== GROUP_ID) return;
+    // Filter: only configured chats
+    if (!CHAT_IDS.has(chatId)) return;
 
-    // Filter: only commands or mentions
-    const isCommand = body.startsWith('/');
-    const lower = body.toLowerCase();
-    const isMention = lower.includes(`@${BOT_NAME}`) || lower.includes('@regelebot');
+    // Skip if already processing a message in this chat (prevents reply loops)
+    if (processing.has(chatId)) return;
 
-    if (!isCommand && !isMention) return;
+    const isDirect = !chat.isGroup;
 
+    // In group chats, require a command or @mention; in 1-to-1, respond to everything
+    if (!isDirect) {
+        const isCommand = body.startsWith('/');
+        const lower = body.toLowerCase();
+        const isMention = lower.includes(`@${BOT_NAME}`) || lower.includes('@regelebot');
+        if (!isCommand && !isMention) return;
+    }
+
+    processing.add(chatId);
     try {
         // Show typing indicator
         await chat.sendStateTyping();
@@ -109,6 +121,7 @@ async function handleMessage(message, eventName) {
             sender_name: senderName,
             body: body,
             timestamp: message.timestamp,
+            is_direct: isDirect,
         }, {
             timeout: 30000,
             headers: { 'X-Webhook-Secret': WEBHOOK_SECRET },
@@ -152,6 +165,8 @@ async function handleMessage(message, eventName) {
         if (error.code === 'ECONNREFUSED') {
             console.error('[Gateway] Bot Python non accessible.');
         }
+    } finally {
+        processing.delete(chatId);
     }
 }
 

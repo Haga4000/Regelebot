@@ -4,7 +4,7 @@ from agents.subagents.stats import StatsAgent
 from config import settings
 
 
-async def cmd_vu(args: str, sender: dict, db: AsyncSession) -> str:
+async def cmd_vu(args: str, sender: dict, db: AsyncSession, **kwargs) -> str:
     if not args.strip():
         return "Usage : /vu [titre du film]"
 
@@ -16,7 +16,7 @@ async def cmd_vu(args: str, sender: dict, db: AsyncSession) -> str:
     return f"✅ {result['message']}"
 
 
-async def cmd_noter(args: str, sender: dict, db: AsyncSession) -> str:
+async def cmd_noter(args: str, sender: dict, db: AsyncSession, **kwargs) -> str:
     parts = args.rsplit(maxsplit=1)
     if len(parts) < 2:
         return "Usage : /noter [titre du film] [1-5]"
@@ -42,7 +42,7 @@ async def cmd_noter(args: str, sender: dict, db: AsyncSession) -> str:
     return f"⭐ {result['message']}"
 
 
-async def cmd_historique(args: str, sender: dict, db: AsyncSession) -> str:
+async def cmd_historique(args: str, sender: dict, db: AsyncSession, **kwargs) -> str:
     agent = StatsAgent(db, settings.TMDB_API_KEY)
     history = await agent.get_history(limit=10)
 
