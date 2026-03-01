@@ -10,7 +10,7 @@ from config import settings
 from core.database import get_db
 from core.rate_limiter import rate_limiter
 from core.router import MessageRouter
-from core.token_budget import trim_history_to_budget
+from core.token_budget import prepare_history
 from services.conversation import ConversationService
 
 logger = logging.getLogger(__name__)
@@ -24,6 +24,7 @@ class WhatsAppMessage(BaseModel):
     sender_name: str
     body: str
     timestamp: int
+    is_direct: bool = False
 
 
 class PollCreatedEvent(BaseModel):
@@ -49,12 +50,14 @@ async def receive_message(message: WhatsAppMessage):
         conv_service = ConversationService(db)
         group_id = message.from_
 
-        # Fetch history before storing the current message
+        # Fetch history and split into user-only context + exclusion list
         history = await conv_service.get_recent_history(group_id)
-        history = trim_history_to_budget(history, settings.TOKEN_BUDGET)
+        user_history, excluded_titles = prepare_history(history)
 
-        # Store the incoming user message
-        if msg_router.should_respond(message.body):
+        is_flush = message.body.strip().lower() == "/flush"
+
+        # Store the incoming user message (skip /flush — it clears history)
+        if not is_flush and msg_router.should_respond(message.body, is_direct=message.is_direct):
             await conv_service.store_message(
                 group_id=group_id,
                 role="user",
@@ -65,11 +68,14 @@ async def receive_message(message: WhatsAppMessage):
         response = await msg_router.route(
             message=message.body,
             sender={"name": message.sender_name, "phone_hash": message.sender},
-            conversation_history=history,
+            conversation_history=user_history,
+            excluded_titles=excluded_titles,
+            is_direct=message.is_direct,
+            group_id=group_id,
         )
 
-        # Store the bot response
-        if response:
+        # Store the bot response (skip /flush — keep history clean after clear)
+        if response and not is_flush:
             response_text = _extract_response_text(response)
             if response_text:
                 await conv_service.store_message(

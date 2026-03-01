@@ -36,10 +36,20 @@ class MainAgent:
         user_message: str,
         sender_name: str,
         conversation_history: list | None = None,
+        excluded_titles: list[str] | None = None,
     ) -> str:
         # Build system prompt with club context
         club_context = await build_club_context(self.subagents["stats"])
         system_prompt = MAIN_AGENT_SYSTEM_PROMPT.format(club_context=club_context)
+
+        # Inject exclusion list so the LLM avoids repeating recent suggestions
+        if excluded_titles:
+            titles_str = ", ".join(excluded_titles)
+            system_prompt += (
+                f"\n\n## FILMS DEJA SUGGERES\n"
+                f"Ne propose PAS ces films, ils ont deja ete suggeres recemment : "
+                f"{titles_str}"
+            )
 
         # Sanitize and wrap user content in XML tags for clear separation
         full_message = wrap_user_content(sender_name, user_message)
@@ -74,7 +84,7 @@ class MainAgent:
                 messages=messages,
                 tools=tools,
                 temperature=0.7,
-                max_tokens=1024,
+                max_tokens=settings.LLM_MAX_TOKENS,
             )
         except Exception as e:
             logger.error("LLM API error: %s", e)
@@ -90,12 +100,7 @@ class MainAgent:
             if not response.has_tool_calls:
                 break
 
-            tool_call = response.tool_calls[0]
-            logger.info("Tool call: %s(%s)", tool_call.name, tool_call.arguments)
-
-            tool_result = await self._execute_tool(tool_call.name, tool_call.arguments)
-
-            # Add assistant's tool call and tool result to conversation
+            # Add assistant message with all tool calls
             messages.append(
                 ChatMessage(
                     role="assistant",
@@ -103,21 +108,26 @@ class MainAgent:
                     content=response.content,
                 )
             )
-            messages.append(
-                ChatMessage(
-                    role="tool",
-                    content=json.dumps(tool_result, default=str),
-                    tool_call_id=tool_call.id,
-                    tool_name=tool_call.name,
+
+            # Execute every tool call and append a result for each
+            for tool_call in response.tool_calls:
+                logger.info("Tool call: %s(%s)", tool_call.name, tool_call.arguments)
+                tool_result = await self._execute_tool(tool_call.name, tool_call.arguments)
+                messages.append(
+                    ChatMessage(
+                        role="tool",
+                        content=json.dumps(tool_result, default=str),
+                        tool_call_id=tool_call.id,
+                        tool_name=tool_call.name,
+                    )
                 )
-            )
 
             try:
                 response = await self.llm.generate(
                     messages=messages,
                     tools=tools,
                     temperature=0.7,
-                    max_tokens=1024,
+                    max_tokens=settings.LLM_MAX_TOKENS,
                 )
             except Exception as e:
                 logger.error("LLM API error during tool loop: %s", e)

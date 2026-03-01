@@ -4,7 +4,7 @@ from agents.subagents.stats import StatsAgent
 from config import settings
 
 
-async def cmd_stats(args: str, sender: dict, db: AsyncSession) -> str:
+async def cmd_stats(args: str, sender: dict, db: AsyncSession, **kwargs) -> str:
     agent = StatsAgent(db, settings.TMDB_API_KEY)
     stats = await agent.get_stats()
 
